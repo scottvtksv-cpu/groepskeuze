@@ -52,7 +52,21 @@ a { color: var(--teal); }
 .top small { display: block; opacity: .85; font: 12px/1.3 system-ui, sans-serif; margin-top: 2px; }
 .me { background: rgba(255,255,255,.16); border: 0; color: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 600; white-space: nowrap; min-height: 40px; }
 .nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: #fff; border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
-.nav-in { max-width: 960px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+.nav-in { max-width: 960px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
+#map { height: 62vh; min-height: 360px; border-radius: var(--radius); border: 1px solid var(--line); isolation: isolate; background: #dfe9ea; margin-bottom: 12px; }
+.pin { display: block; width: 22px; height: 22px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.45); background: #8a8a8a; }
+.pin.g { background: var(--green); } .pin.m { background: #e0a100; } .pin.s { background: var(--red); }
+.pin.home { background: var(--teal); border-radius: 4px; }
+.leaflet-tooltip.lbl-tip { font: 700 12px system-ui, sans-serif; padding: 2px 6px; }
+.pop b { font: 700 15px Georgia, serif; }
+.pop a { font-weight: 700; }
+.keys { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+.keys span { display: inline-flex; align-items: center; gap: 6px; }
+.keys .pin { width: 14px; height: 14px; border-width: 2px; }
+.dist { display: flex; justify-content: space-between; gap: 12px; align-items: center; text-decoration: none; color: inherit; padding: 10px 0; border-top: 1px solid var(--line); }
+.dist:first-of-type { border-top: 0; }
+.dist b { display: flex; align-items: center; gap: 8px; }
+.dist span { color: var(--muted); font-size: 14px; white-space: nowrap; }
 .nav a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 4px 10px; text-decoration: none; color: var(--muted); font-size: 12px; font-weight: 600; }
 .nav a svg { width: 24px; height: 24px; }
 .nav a.on { color: var(--teal); }
@@ -197,6 +211,7 @@ label.lbl { font-weight: 600; }
   <main class="wrap" id="view"></main>
   <nav class="nav"><div class="nav-in">
     <a href="#/villas" data-tab="villas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>Villa's</a>
+    <a href="#/kaart" data-tab="kaart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.700-6 10-6 10z"/><circle cx="12" cy="11" r="2.200"/></svg>Kaart</a>
     <a href="#/rang" data-tab="rang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>Rangschikking</a>
     <a href="#/stemmers" data-tab="stemmers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="m16 8 2 2 3.5-4"/></svg>Wie stemde</a>
   </div></nav>
@@ -356,7 +371,8 @@ async function refresh() {
     Object.keys(dirty).forEach(function (k) { if (votes[k]) fresh[k] = votes[k]; });
     votes = fresh; loadError = false;
   } catch (e) { loadError = true; }
-  if (currentTab() !== 'villa' || loadError) route(true);
+  var tab = currentTab();
+  if ((tab !== 'villa' && tab !== 'kaart') || loadError) route(true);
 }
 
 // Een cijfer is geldig van 1 tot 10; al het andere (ook oude testgegevens) telt als "geen cijfer".
@@ -406,6 +422,7 @@ function currentTab() {
   var h = location.hash;
   if (h.indexOf('#/villa/') === 0) return 'villa';
   if (h === '#/rang') return 'rang';
+  if (h === '#/kaart') return 'kaart';
   if (h === '#/stemmers') return 'stemmers';
   return 'villas';
 }
@@ -416,8 +433,10 @@ function route(keepScroll) {
   if (tab === 'villa') html += viewVilla(decodeURIComponent(location.hash.slice(8)));
   else if (tab === 'rang') html += viewRank();
   else if (tab === 'stemmers') html += viewVoters();
+  else if (tab === 'kaart') html += viewMap();
   else html += viewList();
   $('#view').innerHTML = html;
+  if (tab === 'kaart') drawMap();
   window.scrollTo(0, keepScroll === true ? y : 0);
 }
 
@@ -544,6 +563,61 @@ function viewRank() {
     h += '</div>';
   });
   return h + '</div>';
+}
+
+/* ---------- Kaart ---------- */
+// Kleur van de speld: groen = week 1 en 2 vrij, geel = één van beide, rood = geen van beide.
+function pinLevel(v) { var n = (free(v.prijzen[0]) ? 1 : 0) + (free(v.prijzen[1]) ? 1 : 0); return n === 2 ? 'g' : n === 1 ? 'm' : 's'; }
+function weekText(v) { return 'Week 1: ' + (free(v.prijzen[0]) ? 'vrij' : v.prijzen[0] === 'nb' ? 'niet vrij' : 'onbekend') + ' · week 2: ' + (free(v.prijzen[1]) ? 'vrij' : v.prijzen[1] === 'nb' ? 'niet vrij' : 'onbekend'); }
+
+function viewMap() {
+  var list = DATA.villas.slice().sort(function (a, b) { return a.km - b.km; });
+  var h = '<p class="intro">Waar liggen de villa\'s? Tik op een speld voor de prijs en de fiche.</p><div id="map"></div>'
+    + '<div class="keys"><span><i class="pin g"></i>week 1 en 2 vrij</span><span><i class="pin m"></i>één van beide vrij</span><span><i class="pin s"></i>geen van beide vrij</span><span><i class="pin home"></i>vertrek: ' + esc(DATA.thuis.naam) + '</span></div>'
+    + '<div class="section narrow"><h3>Van dichtbij naar ver</h3>';
+  list.forEach(function (v) {
+    h += '<a class="dist" href="#/villa/' + esc(v.id) + '"><b><i class="pin ' + pinLevel(v) + '" style="width:14px;height:14px;border-width:2px"></i>' + esc(v.naam) + '</b><span>' + esc(v.rit) + '</span></a>';
+  });
+  return h + '<p class="legend">Afstanden vanuit ' + esc(DATA.thuis.naam) + ', zonder pauzes. De spelden staan op het dorp, niet op het exacte adres.</p></div>';
+}
+
+var leafletReady = null;
+function loadLeaflet() {
+  if (leafletReady) return leafletReady;
+  leafletReady = new Promise(function (resolve, reject) {
+    var css = document.createElement('link');
+    css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    css.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY='; css.crossOrigin = '';
+    document.head.appendChild(css);
+    var js = document.createElement('script');
+    js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    js.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='; js.crossOrigin = '';
+    js.onload = resolve;
+    js.onerror = function () { leafletReady = null; reject(new Error('kaart')); };
+    document.head.appendChild(js);
+  });
+  return leafletReady;
+}
+function drawMap() {
+  var el = $('#map'); if (!el) return;
+  loadLeaflet().then(function () {
+    if (!document.body.contains(el)) return;
+    var L = window.L, map = L.map(el, { scrollWheelZoom: false });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 13, referrerPolicy: 'origin', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' }).addTo(map);
+    var pts = [DATA.thuis.coord];
+    function icon(cls) { return L.divIcon({ className: '', html: '<span class="pin ' + cls + '"></span>', iconSize: [22, 22], iconAnchor: [11, 11] }); }
+    L.marker(DATA.thuis.coord, { icon: icon('home') }).addTo(map).bindTooltip(DATA.thuis.naam, { permanent: true, direction: 'top', offset: [0, -10], className: 'lbl-tip' });
+    // Naamlabels afwisselend boven en onder de speld (van west naar oost), zodat ze elkaar niet bedekken.
+    DATA.villas.slice().sort(function (a, b) { return a.coord[1] - b.coord[1]; }).forEach(function (v, i) {
+      var up = i % 2 === 0;
+      pts.push(v.coord);
+      L.polyline([DATA.thuis.coord, v.coord], { color: '#0f5c63', weight: 1.5, opacity: .45, dashArray: '4 6' }).addTo(map);
+      L.marker(v.coord, { icon: icon(pinLevel(v)) }).addTo(map)
+        .bindTooltip(v.naam, { permanent: true, direction: up ? 'top' : 'bottom', offset: [0, up ? -10 : 10], className: 'lbl-tip' })
+        .bindPopup('<div class="pop"><b>' + esc(v.naam) + '</b><br>' + esc(v.regio) + '<br>' + esc(v.rit) + '<br>' + esc(weekText(v)) + '<br>' + (v.perGezin != null ? euro(v.perGezin) + ' per gezin' : 'Geen prijs voor juli') + '<br><a href="#/villa/' + esc(v.id) + '">Open de fiche →</a></div>');
+    });
+    map.fitBounds(pts, { padding: [28, 28] });
+  }).catch(function () { el.innerHTML = '<p class="legend" style="padding:16px">De kaart kon niet geladen worden. Controleer je verbinding en probeer opnieuw.</p>'; });
 }
 
 function viewVoters() {
