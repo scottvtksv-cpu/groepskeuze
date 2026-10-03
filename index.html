@@ -96,7 +96,8 @@ a { color: var(--teal); }
 
 /* Fiche */
 .back { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-weight: 600; padding: 8px 0 12px; }
-.hero-photo { border-radius: var(--radius); overflow: hidden; margin-bottom: 14px; }
+.hero-photo { display: block; border-radius: var(--radius); overflow: hidden; margin-bottom: 14px; }
+.photo .more { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,.7); color: #fff; border-radius: 999px; padding: 6px 14px; font-weight: 700; font-size: 14px; }
 .hero-photo .photo { aspect-ratio: 16 / 10; }
 .hero h2 { font-size: 25px; }
 .verdict { font-size: 17px; margin: 10px 0 14px; }
@@ -490,7 +491,7 @@ function viewVilla(id) {
   if (!v) return '<p>Villa niet gevonden.</p>';
   var mine = myVote(id), cur = +mine.s, st = stats(id);
   var h = '<div class="narrow"><a class="back" href="#/villas">← Alle villa\'s</a>';
-  h += '<div class="hero-photo">' + photo(v) + '</div>';
+  h += '<a class="hero-photo" href="' + esc(v.link) + '" target="_blank" rel="noopener noreferrer" aria-label="Bekijk alle foto\'s in de advertentie">' + photo(v, '<span class="more">Alle foto\'s ↗</span>') + '</a>';
   h += '<div class="hero"><h2>' + esc(v.naam) + '</h2><div class="loc">' + esc(v.vlag) + ' ' + esc(v.ligging) + '</div><p class="verdict">' + esc(v.oordeel) + '</p></div>';
   if (v.waarschuwing.length) h += '<div class="warn" role="note"><strong>Let op: geen eerste keus</strong><ul>' + v.waarschuwing.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>';
 
