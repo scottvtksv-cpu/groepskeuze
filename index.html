@@ -124,6 +124,7 @@ a { color: var(--teal); }
 .wk small { display: block; font-size: 11px; font-weight: 600; }
 .wk.vrij { background: var(--green-soft); color: var(--green); }
 .wk.nb { background: var(--red-soft); color: var(--red); }
+.wk.alt, .week.alt { background: var(--amber-soft); color: var(--amber); }
 .aspect { display: grid; grid-template-columns: 14px 1fr; gap: 4px 10px; padding: 11px 0; border-top: 1px solid var(--line); }
 .aspect:first-of-type { border-top: 0; padding-top: 0; }
 .dot { width: 14px; height: 14px; border-radius: 50%; margin-top: 4px; background: #b9b4aa; }
@@ -442,23 +443,28 @@ function route(keepScroll) {
 }
 
 function free(p) { return typeof p === 'number'; }
-// 'juli' = minstens één juliweek vrij, 'aug' = enkel augustus, 'onbekend' = niet nagekeken, 'geen' = niets vrij
+// Een week die niet van zaterdag tot zaterdag vrij is, maar wel met aangepaste data: {van, n, prijs}.
+function alt(p) { return p && typeof p === 'object'; }
+// 'juli' = minstens één juliweek vrij, 'flex' = in juli enkel met aangepaste data, 'aug' = enkel augustus,
+// 'onbekend' = niet nagekeken, 'geen' = niets vrij
 function avail(v) {
   if (v.prijzen.some(free)) return 'juli';
+  if (v.prijzen.some(alt)) return 'flex';
   if (v.aug.some(free)) return 'aug';
   if (v.prijzen.every(function (p) { return p === '?'; })) return 'onbekend';
   return 'geen';
 }
 function statusChip(v) {
   var a = avail(v);
+  if (a === 'flex') return '<span class="chip deels">Juli: enkel aangepaste data</span>';
   if (a === 'aug') return '<span class="chip nee">Niet in juli · enkel augustus</span>';
   if (a === 'onbekend') return '<span class="chip onbekend">Niet nagekeken</span>';
   if (a === 'geen') return '<span class="chip nee">' + (v.aug.every(function (p) { return p === 'nb'; }) ? 'Niet vrij in juli en augustus' : 'Niet vrij in juli') + '</span>';
   return '';
 }
 function weekBox(cls, label, p, showPrice) {
-  var c = free(p) ? 'vrij' : p === 'nb' ? 'nb' : '';
-  var t = free(p) ? '✓ vrij' + (showPrice ? '' : '') : p === 'nb' ? '✗ niet vrij' : '? onbekend';
+  var c = free(p) ? 'vrij' : alt(p) ? 'alt' : p === 'nb' ? 'nb' : '';
+  var t = free(p) ? '✓ vrij' : alt(p) ? '≈ ' + esc(p.van) + ' (' + p.n + ' nachten)' : p === 'nb' ? '✗ niet vrij' : '? onbekend';
   return '<div class="' + cls + ' ' + c + '"><small>' + esc(label) + '</small>' + t + '</div>';
 }
 function photo(v, extra) {
@@ -466,7 +472,7 @@ function photo(v, extra) {
 }
 
 function viewList() {
-  var order = { juli: 0, aug: 1, onbekend: 2, geen: 3 };
+  var order = { juli: 0, flex: 1, aug: 2, onbekend: 3, geen: 4 };
   var list = DATA.villas.slice().sort(function (a, b) { return order[avail(a)] - order[avail(b)] || (a.perGezin || 1e9) - (b.perGezin || 1e9) || a.id - b.id; });
   var done = DATA.villas.filter(function (v) { return scoreOf(votes[ME + '_' + v.id]) > 0; }).length;
   var h = '<p class="intro">Dag ' + esc(ME) + '! Tik op een villa, lees de korte fiche en geef een cijfer op 10. Je gaf er <b>' + done + ' van ' + DATA.villas.length + '</b>.</p><div class="grid">';
@@ -476,7 +482,7 @@ function viewList() {
       + '<div class="tile-body"><h2>' + esc(v.naam) + '</h2><div class="loc">' + esc(v.vlag) + ' ' + esc(v.regio) + '</div>'
       + '<div class="wks">' + weekBox('wk', 'Week 1 · ' + DATA.juli[0], v.prijzen[0]) + weekBox('wk', 'Week 2 · ' + DATA.juli[1], v.prijzen[1]) + '</div>'
       + (s ? '' : '<div class="todo" style="margin-top:6px">Nog geen cijfer</div>')
-      + '<div class="price">' + (v.perGezin != null ? euro(v.perGezin) + ' <small>/ gezin</small>' : '<small>geen prijs voor juli</small>') + '</div></div></a>';
+      + '<div class="price">' + (v.perGezin != null ? euro(v.perGezin) + ' <small>/ gezin' + (v.nachten ? ' · ' + v.nachten + ' nachten' : '') + '</small>' : '<small>geen prijs voor juli</small>') + '</div></div></a>';
   });
   h += '</div><div class="section narrow" style="margin-top:16px"><details><summary>Afgevallen villa\'s (' + DATA.afgevallen.length + ')</summary><ul class="note" style="margin-top:10px">' + DATA.afgevallen.map(function (a) { return '<li><b>' + esc(a[0]) + '</b>: ' + esc(a[1]) + '</li>'; }).join('') + '</ul></details></div>';
   h += '<div class="section narrow"><details><summary>Over deze gegevens</summary><ul class="note" style="margin-top:10px">' + DATA.noten.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul></details></div>';
@@ -496,10 +502,11 @@ function viewVilla(id) {
   if (v.waarschuwing.length) h += '<div class="warn" role="note"><strong>Let op: geen eerste keus</strong><ul>' + v.waarschuwing.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>';
 
   h += '<div class="section"><div class="facts">'
-    + '<div class="fact"><b>' + (v.perGezin != null ? euro(v.perGezin) : 'Geen prijs') + '</b><span>per gezin, per week</span></div>'
+    + '<div class="fact"><b>' + (v.perGezin != null ? euro(v.perGezin) : 'Geen prijs') + '</b><span>per gezin, ' + (v.nachten ? v.nachten + ' nachten' : 'per week') + '</span></div>'
     + '<div class="fact"><b>' + esc(v.slpk) + ' slpk · ' + esc(v.badk) + ' badk</b><span>slaapkamers en badkamers</span></div>'
     + '<div class="fact" style="grid-column:1 / -1"><b>' + esc(v.rit) + '</b><span>vanuit Gent, zonder pauzes</span></div></div>'
     + '<div class="month">Juli 2027</div><div class="weeks">' + DATA.juli.map(function (w, i) { return weekBox('week' + (i < 2 ? ' key' : ''), (i < 2 ? 'Week ' + (i + 1) + ' · ' : '') + w, v.prijzen[i]); }).join('') + '</div>'
+    + (v.juliNota ? '<p class="legend">' + esc(v.juliNota) + '</p>' : '')
     + '<div class="month">Augustus 2027</div><div class="weeks">' + DATA.augustus.map(function (w, i) { return weekBox('week', w, v.aug[i]); }).join('') + '</div>'
     + (v.augNota ? '<p class="legend">' + esc(v.augNota) + '</p>' : '') + '</div>';
 
@@ -568,13 +575,14 @@ function viewRank() {
 
 /* ---------- Kaart ---------- */
 // Kleur van de speld: groen = week 1 en 2 vrij, geel = één van beide, rood = geen van beide.
-function pinLevel(v) { var n = (free(v.prijzen[0]) ? 1 : 0) + (free(v.prijzen[1]) ? 1 : 0); return n === 2 ? 'g' : n === 1 ? 'm' : 's'; }
-function weekText(v) { return 'Week 1: ' + (free(v.prijzen[0]) ? 'vrij' : v.prijzen[0] === 'nb' ? 'niet vrij' : 'onbekend') + ' · week 2: ' + (free(v.prijzen[1]) ? 'vrij' : v.prijzen[1] === 'nb' ? 'niet vrij' : 'onbekend'); }
+function pinLevel(v) { var a = v.prijzen[0], b = v.prijzen[1]; return free(a) && free(b) ? 'g' : free(a) || free(b) || alt(a) || alt(b) ? 'm' : 's'; }
+function weekWord(p) { return free(p) ? 'vrij' : alt(p) ? p.van + ' (' + p.n + ' nachten)' : p === 'nb' ? 'niet vrij' : 'onbekend'; }
+function weekText(v) { return 'Week 1: ' + weekWord(v.prijzen[0]) + ' · week 2: ' + weekWord(v.prijzen[1]); }
 
 function viewMap() {
   var list = DATA.villas.slice().sort(function (a, b) { return a.km - b.km; });
   var h = '<p class="intro">Waar liggen de villa\'s? Tik op een speld voor de prijs en de fiche.</p><div id="map"></div>'
-    + '<div class="keys"><span><i class="pin g"></i>week 1 en 2 vrij</span><span><i class="pin m"></i>één van beide vrij</span><span><i class="pin s"></i>geen van beide vrij</span><span><i class="pin home"></i>vertrek: ' + esc(DATA.thuis.naam) + '</span></div>'
+    + '<div class="keys"><span><i class="pin g"></i>week 1 en 2 vrij</span><span><i class="pin m"></i>één van beide, of aangepaste data</span><span><i class="pin s"></i>geen van beide vrij</span><span><i class="pin home"></i>vertrek: ' + esc(DATA.thuis.naam) + '</span></div>'
     + '<div class="section narrow"><h3>Van dichtbij naar ver</h3>';
   list.forEach(function (v) {
     h += '<a class="dist" href="#/villa/' + esc(v.id) + '"><b><i class="pin ' + pinLevel(v) + '" style="width:14px;height:14px;border-width:2px"></i>' + esc(v.naam) + '</b><span>' + esc(v.rit) + '</span></a>';
