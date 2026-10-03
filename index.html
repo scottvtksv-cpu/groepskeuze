@@ -442,7 +442,7 @@ function route(keepScroll) {
   window.scrollTo(0, keepScroll === true ? y : 0);
 }
 
-function free(p) { return typeof p === 'number'; }
+function free(p) { return typeof p === 'number' || p === 'vrij'; }
 // Een week die niet van zaterdag tot zaterdag vrij is, maar wel met aangepaste data: {van, n, prijs}.
 function alt(p) { return p && typeof p === 'object'; }
 // 'juli' = minstens één juliweek vrij, 'flex' = in juli enkel met aangepaste data, 'aug' = enkel augustus,
