@@ -88,6 +88,8 @@ a { color: var(--teal); }
 .loc { color: var(--muted); font-size: 13px; }
 .tile .price { margin-top: auto; padding-top: 8px; font-weight: 700; font-size: 16px; }
 .tile .price small { font-weight: 500; color: var(--muted); font-size: 12px; }
+.tile .price.over { color: var(--red); }
+.tile .price.over small { color: var(--red); }
 .todo { color: var(--terra); font-size: 13px; font-weight: 600; }
 .chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 3px 9px; font-size: 12px; font-weight: 700; background: var(--grey-soft); color: var(--ink); }
 .chip.ok { background: var(--green-soft); color: var(--green); }
@@ -443,6 +445,7 @@ function route(keepScroll) {
 }
 
 function free(p) { return typeof p === 'number' || p === 'vrij'; }
+function overBudget(v) { return !!(DATA.budget && v.weekprijs != null && v.weekprijs > DATA.budget); }
 // Een week die niet van zaterdag tot zaterdag vrij is, maar wel met aangepaste data: {van, n, prijs}.
 function alt(p) { return p && typeof p === 'object'; }
 // 'juli' = minstens één juliweek vrij, 'flex' = in juli enkel met aangepaste data, 'aug' = enkel augustus,
@@ -475,14 +478,14 @@ function viewList() {
   var order = { juli: 0, flex: 1, aug: 2, onbekend: 3, geen: 4 };
   var list = DATA.villas.slice().sort(function (a, b) { return order[avail(a)] - order[avail(b)] || (a.perGezin || 1e9) - (b.perGezin || 1e9) || a.id - b.id; });
   var done = DATA.villas.filter(function (v) { return scoreOf(votes[ME + '_' + v.id]) > 0; }).length;
-  var h = '<p class="intro">Dag ' + esc(ME) + '! Tik op een villa, lees de korte fiche en geef een cijfer op 10. Je gaf er <b>' + done + ' van ' + DATA.villas.length + '</b>.</p><div class="grid">';
+  var h = '<p class="intro">Dag ' + esc(ME) + '! Tik op een villa, lees de korte fiche en geef een cijfer op 10. Je gaf er <b>' + done + ' van ' + DATA.villas.length + '</b>.' + (DATA.budget ? ' Budget: maximaal ' + euro(DATA.budget) + ' per week; prijzen daarboven staan in het rood.' : '') + '</p><div class="grid">';
   list.forEach(function (v) {
     var s = scoreOf(votes[ME + '_' + v.id]);
     h += '<a class="tile" href="#/villa/' + esc(v.id) + '">' + photo(v, statusChip(v) + (s ? '<span class="mine">' + s + ' / 10</span>' : ''))
       + '<div class="tile-body"><h2>' + esc(v.naam) + '</h2><div class="loc">' + esc(v.vlag) + ' ' + esc(v.regio) + '</div>'
       + '<div class="wks">' + weekBox('wk', 'Week 1 · ' + DATA.juli[0], v.prijzen[0]) + weekBox('wk', 'Week 2 · ' + DATA.juli[1], v.prijzen[1]) + '</div>'
       + (s ? '' : '<div class="todo" style="margin-top:6px">Nog geen cijfer</div>')
-      + '<div class="price">' + (v.perGezin != null ? euro(v.perGezin) + ' <small>/ gezin' + (v.nachten ? ' · ' + v.nachten + ' nachten' : '') + '</small>' : '<small>geen prijs voor juli</small>') + '</div></div></a>';
+      + '<div class="price' + (overBudget(v) ? ' over' : '') + '">' + (v.perGezin != null ? euro(v.perGezin) + ' <small>/ gezin' + (v.nachten ? ' · ' + v.nachten + ' nachten' : '') + (overBudget(v) ? ' · boven budget' : '') + '</small>' : '<small>geen prijs voor juli</small>') + '</div></div></a>';
   });
   h += '</div><div class="section narrow" style="margin-top:16px"><details><summary>Afgevallen villa\'s (' + DATA.afgevallen.length + ')</summary><ul class="note" style="margin-top:10px">' + DATA.afgevallen.map(function (a) { return '<li><b>' + esc(a[0]) + '</b>: ' + esc(a[1]) + '</li>'; }).join('') + '</ul></details></div>';
   h += '<div class="section narrow"><details><summary>Over deze gegevens</summary><ul class="note" style="margin-top:10px">' + DATA.noten.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul></details></div>';
@@ -499,7 +502,9 @@ function viewVilla(id) {
   var h = '<div class="narrow"><a class="back" href="#/villas">← Alle villa\'s</a>';
   h += '<a class="hero-photo" href="' + esc(v.link) + '" target="_blank" rel="noopener noreferrer" aria-label="Bekijk alle foto\'s in de advertentie">' + photo(v, '<span class="more">Alle foto\'s ↗</span>') + '</a>';
   h += '<div class="hero"><h2>' + esc(v.naam) + '</h2><div class="loc">' + esc(v.vlag) + ' ' + esc(v.ligging) + '</div><p class="verdict">' + esc(v.oordeel) + '</p></div>';
-  if (v.waarschuwing.length) h += '<div class="warn" role="note"><strong>Let op: geen eerste keus</strong><ul>' + v.waarschuwing.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>';
+  var warns = v.waarschuwing.slice();
+  if (overBudget(v)) warns.unshift('Boven het budget van ' + euro(DATA.budget) + ' per week: ' + euro(v.weekprijs) + (v.nachten ? ' voor ' + v.nachten + ' nachten' : '') + '.');
+  if (warns.length) h += '<div class="warn" role="note"><strong>Let op: geen eerste keus</strong><ul>' + warns.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>';
 
   h += '<div class="section"><div class="facts">'
     + '<div class="fact"><b>' + (v.perGezin != null ? euro(v.perGezin) : 'Geen prijs') + '</b><span>per gezin, ' + (v.nachten ? v.nachten + ' nachten' : 'per week') + '</span></div>'
@@ -515,7 +520,12 @@ function viewVilla(id) {
     var x = v.inschatting[i];
     h += '<div class="aspect"><span class="dot ' + esc(x[0]) + '"></span><b>' + esc(a) + ' <em class="' + esc(x[0]) + '">' + LEVEL[x[0]] + '</em></b><p>' + esc(x[1]) + '</p></div>';
   });
-  h += '<p class="legend">Inschatting door Claude op basis van de advertentie. Geen garantie.</p></div>';
+  if (v.muggen) {
+    var mc = { '1': 's', '2': 'm', '3': 'g' }[v.muggen[0]] || 'o';
+    h += '<div class="aspect"><span class="dot ' + mc + '"></span><b>Muggen <em class="' + mc + '">' + ({ '1': 'Kan de vakantie bederven', '2': 'Voorbereid vertrekken', '3': 'Weinig muggen' }[v.muggen[0]] || 'Onbekend') + '</em></b><p>' + esc(v.muggen[1]) + '</p></div>';
+  }
+  if (v.klimaat) h += '<div class="aspect"><span class="dot"></span><b>Klimaat in juli <em>Info</em></b><p>' + esc(v.klimaat) + '</p></div>';
+  h += '<p class="legend">Inschatting door Claude op basis van de advertentie en de streek. Geen garantie. Muggen: 1 = kan de vakantie bederven, 2 = er zullen muggen zijn (spray, stekkerverdamper, horren navragen), 3 = weinig muggen.</p></div>';
 
   h += '<div class="section score" data-id="' + esc(id) + '"><h3>Jouw cijfer <span class="status" id="saveStatus">' + (cur ? 'Bewaard ✓' : '') + '</span></h3><div class="ten" role="group" aria-label="Cijfer op 10">';
   for (var n = 1; n <= 10; n++) h += '<button type="button" data-n="' + n + '" aria-pressed="' + (cur === n) + '" class="' + (cur === n ? 'on' : '') + '">' + n + '</button>';
