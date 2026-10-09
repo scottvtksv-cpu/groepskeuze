@@ -88,6 +88,14 @@ a { color: var(--teal); }
 .loc { color: var(--muted); font-size: 13px; }
 .tile .price { margin-top: auto; padding-top: 8px; font-weight: 700; font-size: 16px; }
 .tile .price small { font-weight: 500; color: var(--muted); font-size: 12px; }
+/* Goud, zilver en brons voor de top 3 */
+.tile.goud { border: 3px solid #d4a017; box-shadow: 0 0 0 1px #f6e3a1 inset, 0 4px 14px rgba(212,160,23,.35); }
+.tile.zilver { border: 3px solid #a7a9ac; box-shadow: 0 0 0 1px #e6e7e8 inset, 0 4px 14px rgba(140,140,140,.3); }
+.tile.brons { border: 3px solid #b87333; box-shadow: 0 0 0 1px #e9c7a8 inset, 0 4px 14px rgba(184,115,51,.3); }
+.medal { position: absolute; right: 8px; top: 8px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font: 700 15px Georgia, serif; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4); }
+.medal.goud { background: linear-gradient(145deg, #f4d35e, #c99a12); color: #3d2c00; }
+.medal.zilver { background: linear-gradient(145deg, #e3e4e6, #9a9c9f); color: #2a2a2a; }
+.medal.brons { background: linear-gradient(145deg, #d9915a, #9c5a22); }
 .lowbox { margin-top: 16px; }
 .lowbox > summary { list-style: none; text-align: center; }
 .lowbox > summary::-webkit-details-marker { display: none; }
@@ -484,6 +492,11 @@ function viewList() {
   // Villa's met een groepsgemiddelde onder de 8 gaan naar een ingeklapt deel; villa's zonder cijfers blijven zichtbaar.
   var top = [], low = [];
   list.forEach(function (v) { var t = stats(v.id).total; (t !== null && t < LOW_CUTOFF ? low : top).push(v); });
+  // Goud, zilver en brons voor de drie hoogste groepsgemiddelden (gelijke scores delen een plaats).
+  medals = {};
+  var ranked = DATA.villas.map(function (v) { return { id: v.id, t: stats(v.id).total }; }).filter(function (r) { return r.t !== null; }).sort(function (a, b) { return b.t - a.t; });
+  var place = 0, prev = null;
+  ranked.forEach(function (r) { if (r.t !== prev) { place++; prev = r.t; } if (place <= 3) medals[r.id] = place; });
   var h = '<p class="intro">Dag ' + esc(ME) + '! Tik op een villa, lees de korte fiche en geef een cijfer op 10. Je gaf er <b>' + done + ' van ' + DATA.villas.length + '</b>.' + (DATA.budget ? ' Budget: maximaal ' + euro(DATA.budget) + ' per week; prijzen daarboven staan in het rood.' : '') + '</p>';
   h += '<div class="grid">' + top.map(tile).join('') + '</div>';
   if (low.length) {
@@ -498,9 +511,11 @@ function viewList() {
 
 var LOW_CUTOFF = 8;
 var lowOpen = false;
+var medals = {};
+var MEDAL = { 1: 'goud', 2: 'zilver', 3: 'brons' };
 function tile(v) {
-  var s = scoreOf(votes[ME + '_' + v.id]), st = stats(v.id);
-  return '<a class="tile" href="#/villa/' + esc(v.id) + '">' + photo(v, statusChip(v) + (s ? '<span class="mine">' + s + ' / 10</span>' : ''))
+  var s = scoreOf(votes[ME + '_' + v.id]), st = stats(v.id), m = medals[v.id];
+  return '<a class="tile' + (m ? ' ' + MEDAL[m] : '') + '" href="#/villa/' + esc(v.id) + '">' + photo(v, statusChip(v) + (s ? '<span class="mine">' + s + ' / 10</span>' : '') + (m ? '<span class="medal ' + MEDAL[m] + '" title="' + m + 'e plaats">' + m + '</span>' : ''))
     + '<div class="tile-body"><h2>' + esc(v.naam) + '</h2><div class="loc">' + esc(v.vlag) + ' ' + esc(v.regio) + (st.total !== null ? ' · groep ' + num(st.total) : '') + '</div>'
     + '<div class="wks">' + weekBox('wk', 'Week 1 · ' + DATA.juli[0], v.prijzen[0]) + weekBox('wk', 'Week 2 · ' + DATA.juli[1], v.prijzen[1]) + '</div>'
     + (s ? '' : '<div class="todo" style="margin-top:6px">Nog geen cijfer</div>')
