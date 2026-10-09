@@ -88,6 +88,9 @@ a { color: var(--teal); }
 .loc { color: var(--muted); font-size: 13px; }
 .tile .price { margin-top: auto; padding-top: 8px; font-weight: 700; font-size: 16px; }
 .tile .price small { font-weight: 500; color: var(--muted); font-size: 12px; }
+.lowbox { margin-top: 16px; }
+.lowbox > summary { list-style: none; text-align: center; }
+.lowbox > summary::-webkit-details-marker { display: none; }
 .tile .price.over { color: var(--red); }
 .tile .price.over small { color: var(--red); }
 .todo { color: var(--terra); font-size: 13px; font-weight: 600; }
@@ -478,20 +481,32 @@ function viewList() {
   var order = { juli: 0, flex: 1, aug: 2, onbekend: 3, geen: 4 };
   var list = DATA.villas.slice().sort(function (a, b) { return order[avail(a)] - order[avail(b)] || (a.perGezin || 1e9) - (b.perGezin || 1e9) || a.id - b.id; });
   var done = DATA.villas.filter(function (v) { return scoreOf(votes[ME + '_' + v.id]) > 0; }).length;
-  var h = '<p class="intro">Dag ' + esc(ME) + '! Tik op een villa, lees de korte fiche en geef een cijfer op 10. Je gaf er <b>' + done + ' van ' + DATA.villas.length + '</b>.' + (DATA.budget ? ' Budget: maximaal ' + euro(DATA.budget) + ' per week; prijzen daarboven staan in het rood.' : '') + '</p><div class="grid">';
-  list.forEach(function (v) {
-    var s = scoreOf(votes[ME + '_' + v.id]);
-    h += '<a class="tile" href="#/villa/' + esc(v.id) + '">' + photo(v, statusChip(v) + (s ? '<span class="mine">' + s + ' / 10</span>' : ''))
-      + '<div class="tile-body"><h2>' + esc(v.naam) + '</h2><div class="loc">' + esc(v.vlag) + ' ' + esc(v.regio) + '</div>'
-      + '<div class="wks">' + weekBox('wk', 'Week 1 · ' + DATA.juli[0], v.prijzen[0]) + weekBox('wk', 'Week 2 · ' + DATA.juli[1], v.prijzen[1]) + '</div>'
-      + (s ? '' : '<div class="todo" style="margin-top:6px">Nog geen cijfer</div>')
-      + '<div class="price' + (overBudget(v) ? ' over' : '') + '">' + (v.perGezin != null ? euro(v.perGezin) + ' <small>/ gezin' + (v.nachten ? ' · ' + v.nachten + ' nachten' : '') + (overBudget(v) ? ' · boven budget' : '') + '</small>' : '<small>geen prijs voor juli</small>') + '</div></div></a>';
-  });
-  h += '</div><div class="section narrow" style="margin-top:16px"><details><summary>Afgevallen villa\'s (' + DATA.afgevallen.length + ')</summary><ul class="note" style="margin-top:10px">' + DATA.afgevallen.map(function (a) { return '<li><b>' + esc(a[0]) + '</b>: ' + esc(a[1]) + '</li>'; }).join('') + '</ul></details></div>';
+  // Villa's met een groepsgemiddelde onder de 8 gaan naar een ingeklapt deel; villa's zonder cijfers blijven zichtbaar.
+  var top = [], low = [];
+  list.forEach(function (v) { var t = stats(v.id).total; (t !== null && t < LOW_CUTOFF ? low : top).push(v); });
+  var h = '<p class="intro">Dag ' + esc(ME) + '! Tik op een villa, lees de korte fiche en geef een cijfer op 10. Je gaf er <b>' + done + ' van ' + DATA.villas.length + '</b>.' + (DATA.budget ? ' Budget: maximaal ' + euro(DATA.budget) + ' per week; prijzen daarboven staan in het rood.' : '') + '</p>';
+  h += '<div class="grid">' + top.map(tile).join('') + '</div>';
+  if (low.length) {
+    h += '<details class="lowbox"' + (lowOpen ? ' open' : '') + '><summary class="btn ghost">' + (lowOpen ? 'Verberg' : 'Toon') + ' de ' + low.length + ' villa\'s met een lager cijfer (onder de ' + LOW_CUTOFF + ')</summary>'
+      + '<p class="legend" style="margin:10px 0">Deze villa\'s kregen van de groep gemiddeld minder dan ' + LOW_CUTOFF + ' op 10. Ze blijven meetellen, maar staan hier zodat de sterkste kandidaten bovenaan blijven.</p><div class="grid">' + low.map(tile).join('') + '</div></details>';
+  }
+  h += '<div class="section narrow" style="margin-top:16px"><details><summary>Afgevallen villa\'s (' + DATA.afgevallen.length + ')</summary><ul class="note" style="margin-top:10px">' + DATA.afgevallen.map(function (a) { return '<li><b>' + esc(a[0]) + '</b>: ' + esc(a[1]) + '</li>'; }).join('') + '</ul></details></div>';
   h += '<div class="section narrow"><details><summary>Over deze gegevens</summary><ul class="note" style="margin-top:10px">' + DATA.noten.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul></details></div>';
   h += '<p style="text-align:center"><button class="linkbtn" type="button" onclick="vkLogout()">Dit toestel afmelden</button></p>';
   return h;
 }
+
+var LOW_CUTOFF = 8;
+var lowOpen = false;
+function tile(v) {
+  var s = scoreOf(votes[ME + '_' + v.id]), st = stats(v.id);
+  return '<a class="tile" href="#/villa/' + esc(v.id) + '">' + photo(v, statusChip(v) + (s ? '<span class="mine">' + s + ' / 10</span>' : ''))
+    + '<div class="tile-body"><h2>' + esc(v.naam) + '</h2><div class="loc">' + esc(v.vlag) + ' ' + esc(v.regio) + (st.total !== null ? ' · groep ' + num(st.total) : '') + '</div>'
+    + '<div class="wks">' + weekBox('wk', 'Week 1 · ' + DATA.juli[0], v.prijzen[0]) + weekBox('wk', 'Week 2 · ' + DATA.juli[1], v.prijzen[1]) + '</div>'
+    + (s ? '' : '<div class="todo" style="margin-top:6px">Nog geen cijfer</div>')
+    + '<div class="price' + (overBudget(v) ? ' over' : '') + '">' + (v.perGezin != null ? euro(v.perGezin) + ' <small>/ gezin' + (v.nachten ? ' · ' + v.nachten + ' nachten' : '') + (overBudget(v) ? ' · boven budget' : '') + '</small>' : '<small>geen prijs voor juli</small>') + '</div></div></a>';
+}
+$('#view').addEventListener('toggle', function (ev) { if (ev.target.classList && ev.target.classList.contains('lowbox')) { lowOpen = ev.target.open; var s = ev.target.querySelector('summary'); if (s) s.textContent = s.textContent.replace(lowOpen ? /^Toon/ : /^Verberg/, lowOpen ? 'Verberg' : 'Toon'); } }, true);
 
 function row(label, value) { return value ? '<dt>' + esc(label) + '</dt><dd>' + esc(value) + '</dd>' : ''; }
 
