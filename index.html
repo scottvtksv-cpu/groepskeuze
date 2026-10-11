@@ -381,13 +381,16 @@ var Store = CFG.projectId ? {
 
 var loadError = false;
 async function refresh() {
+  var mapKeyBefore = DATA ? mapVillas().map(function (v) { return v.id; }).join(',') : '';
   try {
     var fresh = await Store.list();
     Object.keys(dirty).forEach(function (k) { if (votes[k]) fresh[k] = votes[k]; });
     votes = fresh; loadError = false;
   } catch (e) { loadError = true; }
   var tab = currentTab();
-  if ((tab !== 'villa' && tab !== 'kaart') || loadError) route(true);
+  // De kaart wordt enkel opnieuw getekend als de filter een andere set villa's oplevert.
+  var mapChanged = tab === 'kaart' && mapVillas().map(function (v) { return v.id; }).join(',') !== mapKeyBefore;
+  if ((tab !== 'villa' && tab !== 'kaart') || mapChanged || loadError) route(true);
 }
 
 // Een cijfer is geldig van 1 tot 10; al het andere (ook oude testgegevens) telt als "geen cijfer".
@@ -584,6 +587,9 @@ $('#view').addEventListener('click', function (ev) {
   b.parentNode.querySelectorAll('button').forEach(function (x) { var on = +x.dataset.n === val; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); });
   queueSave(id, 500);
 });
+$('#view').addEventListener('change', function (ev) {
+  if (ev.target.id === 'mapBetter') { mapBetter = ev.target.checked; route(true); }
+});
 $('#view').addEventListener('input', function (ev) {
   if (ev.target.id !== 'cmt') return;
   var id = ev.target.closest('.score').dataset.id, o = myVote(id);
@@ -619,9 +625,16 @@ function pinLevel(v) { var a = v.prijzen[0], b = v.prijzen[1]; return free(a) &&
 function weekWord(p) { return free(p) ? 'vrij' : alt(p) ? p.van + ' (' + p.n + ' nachten)' : p === 'nb' ? 'niet vrij' : 'onbekend'; }
 function weekText(v) { return 'Week 1: ' + weekWord(v.prijzen[0]) + ' · week 2: ' + weekWord(v.prijzen[1]); }
 
+// Kaartfilter: standaard enkel de "betere" villa's (groepsgemiddelde 8 of hoger, of nog geen cijfers), zoals in het raster.
+var mapBetter = true;
+function isBetter(v) { var t = stats(v.id).total; return t === null || t >= LOW_CUTOFF; }
+function mapVillas() { return DATA.villas.filter(function (v) { return !mapBetter || isBetter(v); }); }
 function viewMap() {
-  var list = DATA.villas.slice().sort(function (a, b) { return a.km - b.km; });
-  var h = '<p class="intro">Waar liggen de villa\'s? Tik op een speld voor de prijs en de fiche.</p><div id="map"></div>'
+  var list = mapVillas().slice().sort(function (a, b) { return a.km - b.km; });
+  var hidden = DATA.villas.length - list.length;
+  var h = '<p class="intro">Waar liggen de villa\'s? Tik op een speld voor de prijs en de fiche.</p>'
+    + '<label class="chip" style="cursor:pointer;margin-bottom:10px;padding:8px 14px;font-size:14px"><input type="checkbox" id="mapBetter"' + (mapBetter ? ' checked' : '') + ' style="margin-right:8px">Enkel de betere villa\'s (groepscijfer ' + LOW_CUTOFF + ' of hoger, of nog geen cijfer)' + (mapBetter && hidden ? ' · ' + hidden + ' verborgen' : '') + '</label>'
+    + '<div id="map"></div>'
     + '<div class="keys"><span><i class="pin g"></i>week 1 en 2 vrij</span><span><i class="pin m"></i>één van beide, of aangepaste data</span><span><i class="pin s"></i>geen van beide vrij</span><span><i class="pin home"></i>vertrek: ' + esc(DATA.thuis.naam) + '</span></div>'
     + '<div class="section narrow"><h3>Van dichtbij naar ver</h3>';
   list.forEach(function (v) {
@@ -657,7 +670,7 @@ function drawMap() {
     function icon(cls) { return L.divIcon({ className: '', html: '<span class="pin ' + cls + '"></span>', iconSize: [22, 22], iconAnchor: [11, 11] }); }
     L.marker(DATA.thuis.coord, { icon: icon('home') }).addTo(map).bindTooltip(DATA.thuis.naam, { permanent: true, direction: 'top', offset: [0, -10], className: 'lbl-tip' });
     // Naamlabels afwisselend boven en onder de speld (van west naar oost), zodat ze elkaar niet bedekken.
-    DATA.villas.slice().sort(function (a, b) { return a.coord[1] - b.coord[1]; }).forEach(function (v, i) {
+    mapVillas().sort(function (a, b) { return a.coord[1] - b.coord[1]; }).forEach(function (v, i) {
       var up = i % 2 === 0;
       pts.push(v.coord);
       L.polyline([DATA.thuis.coord, v.coord], { color: '#0f5c63', weight: 1.5, opacity: .45, dashArray: '4 6' }).addTo(map);
