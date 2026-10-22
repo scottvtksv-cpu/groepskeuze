@@ -495,6 +495,13 @@ function viewList() {
   // Villa's met een groepsgemiddelde onder de 8 gaan naar een ingeklapt deel; villa's zonder cijfers blijven zichtbaar.
   var top = [], low = [];
   list.forEach(function (v) { var t = stats(v.id).total; (t !== null && t < LOW_CUTOFF ? low : top).push(v); });
+  // Nieuwe villa's zonder cijfers eerst, daarna de rest op groepsgemiddelde.
+  top.sort(function (a, b) {
+    var ta = stats(a.id).total, tb = stats(b.id).total;
+    if (ta === null && tb !== null) return -1;
+    if (tb === null && ta !== null) return 1;
+    return ta === null ? 0 : tb - ta;
+  });
   // Goud, zilver en brons voor de drie hoogste groepsgemiddelden (gelijke scores delen een plaats).
   medals = {};
   var ranked = DATA.villas.map(function (v) { return { id: v.id, t: stats(v.id).total }; }).filter(function (r) { return r.t !== null; }).sort(function (a, b) { return b.t - a.t; });
@@ -521,7 +528,7 @@ function tile(v) {
   return '<a class="tile' + (m ? ' ' + MEDAL[m] : '') + '" href="#/villa/' + esc(v.id) + '">' + photo(v, statusChip(v) + (s ? '<span class="mine">' + s + ' / 10</span>' : '') + (m ? '<span class="medal ' + MEDAL[m] + '" title="' + m + 'e plaats">' + m + '</span>' : ''))
     + '<div class="tile-body"><h2>' + esc(v.naam) + '</h2><div class="loc">' + esc(v.vlag) + ' ' + esc(v.regio) + (st.total !== null ? ' · groep ' + num(st.total) : '') + '</div>'
     + '<div class="wks">' + weekBox('wk', 'Week 1 · ' + DATA.juli[0], v.prijzen[0]) + weekBox('wk', 'Week 2 · ' + DATA.juli[1], v.prijzen[1]) + '</div>'
-    + (s ? '' : '<div class="todo" style="margin-top:6px">Nog geen cijfer</div>')
+    + (s ? '' : '<div class="todo" style="margin-top:6px">' + (st.total === null ? 'Nieuw: nog niemand gaf een cijfer' : 'Nog geen cijfer') + '</div>')
     + '<div class="price' + (overBudget(v) ? ' over' : '') + '">' + (v.perGezin != null ? euro(v.perGezin) + ' <small>/ gezin' + (v.nachten ? ' · ' + v.nachten + ' nachten' : '') + (overBudget(v) ? ' · boven budget' : '') + '</small>' : '<small>geen prijs voor juli</small>') + '</div></div></a>';
 }
 $('#view').addEventListener('toggle', function (ev) { if (ev.target.classList && ev.target.classList.contains('lowbox')) { lowOpen = ev.target.open; var s = ev.target.querySelector('summary'); if (s) s.textContent = s.textContent.replace(lowOpen ? /^Toon/ : /^Verberg/, lowOpen ? 'Verberg' : 'Toon'); } }, true);
