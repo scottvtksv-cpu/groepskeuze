@@ -493,8 +493,9 @@ function viewList() {
   var list = DATA.villas.slice().sort(function (a, b) { return order[avail(a)] - order[avail(b)] || (a.perGezin || 1e9) - (b.perGezin || 1e9) || a.id - b.id; });
   var done = DATA.villas.filter(function (v) { return scoreOf(votes[ME + '_' + v.id]) > 0; }).length;
   // Villa's met een groepsgemiddelde onder de 8 gaan naar een ingeklapt deel; villa's zonder cijfers blijven zichtbaar.
-  var top = [], low = [];
-  list.forEach(function (v) { var t = stats(v.id).total; (t !== null && t < LOW_CUTOFF ? low : top).push(v); });
+  // Groepsgemiddelde van 6 of lager: afgevallen ("te laag cijfer"); onder de 8: ingeklapt; anders bovenaan.
+  var top = [], low = [], dropped = [];
+  list.forEach(function (v) { var t = stats(v.id).total; if (isDropped(v)) dropped.push(v); else if (t !== null && t < LOW_CUTOFF) low.push(v); else top.push(v); });
   // Nieuwe villa's zonder cijfers eerst, daarna de rest op groepsgemiddelde.
   top.sort(function (a, b) {
     var ta = stats(a.id).total, tb = stats(b.id).total;
@@ -507,19 +508,23 @@ function viewList() {
   var ranked = DATA.villas.map(function (v) { return { id: v.id, t: stats(v.id).total }; }).filter(function (r) { return r.t !== null; }).sort(function (a, b) { return b.t - a.t; });
   var place = 0, prev = null;
   ranked.forEach(function (r) { if (r.t !== prev) { place++; prev = r.t; } if (place <= 3) medals[r.id] = place; });
-  var h = '<p class="intro">Dag ' + esc(ME) + '! Tik op een villa, lees de korte fiche en geef een cijfer op 10. Je gaf er <b>' + done + ' van ' + DATA.villas.length + '</b>.' + (DATA.budget ? ' Budget: maximaal ' + euro(DATA.budget) + ' per week; prijzen daarboven staan in het rood.' : '') + '</p>';
+  var h = '<p class="intro">Dag ' + esc(ME) + '! Tik op een villa, lees de korte fiche en geef een cijfer op 10. Je gaf er <b>' + done + ' van ' + DATA.villas.length + '</b>.' + (DATA.budget ? ' Budget: maximaal ' + euro(DATA.budget) + ' per week; prijzen daarboven staan in het rood.' : '') + ' Een villa met gemiddeld ' + DROP_CUTOFF + ' of lager (bij minstens ' + DROP_MIN_VOTES + ' cijfers) valt af.</p>';
   h += '<div class="grid">' + top.map(tile).join('') + '</div>';
   if (low.length) {
     h += '<details class="lowbox"' + (lowOpen ? ' open' : '') + '><summary class="btn ghost">' + (lowOpen ? 'Verberg' : 'Toon') + ' de ' + low.length + ' villa\'s met een lager cijfer (onder de ' + LOW_CUTOFF + ')</summary>'
       + '<p class="legend" style="margin:10px 0">Deze villa\'s kregen van de groep gemiddeld minder dan ' + LOW_CUTOFF + ' op 10. Ze blijven meetellen, maar staan hier zodat de sterkste kandidaten bovenaan blijven.</p><div class="grid">' + low.map(tile).join('') + '</div></details>';
   }
-  h += '<div class="section narrow" style="margin-top:16px"><details><summary>Afgevallen villa\'s (' + DATA.afgevallen.length + ')</summary><ul class="note" style="margin-top:10px">' + DATA.afgevallen.map(function (a) { return '<li><b>' + esc(a[0]) + '</b>: ' + esc(a[1]) + '</li>'; }).join('') + '</ul></details></div>';
+  h += '<div class="section narrow" style="margin-top:16px"><details><summary>Afgevallen villa\'s (' + (DATA.afgevallen.length + dropped.length) + ')</summary><ul class="note" style="margin-top:10px">'
+    + dropped.map(function (v) { var s = stats(v.id); return '<li><b><a href="#/villa/' + esc(v.id) + '">' + esc(v.naam) + '</a></b>: te laag cijfer (gemiddeld ' + num(s.total) + ' op 10 van ' + s.given.length + ' stemmers)</li>'; }).join('')
+    + DATA.afgevallen.map(function (a) { return '<li><b>' + esc(a[0]) + '</b>: ' + esc(a[1]) + '</li>'; }).join('') + '</ul></details></div>';
   h += '<div class="section narrow"><details><summary>Over deze gegevens</summary><ul class="note" style="margin-top:10px">' + DATA.noten.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul></details></div>';
   h += '<p style="text-align:center"><button class="linkbtn" type="button" onclick="vkLogout()">Dit toestel afmelden</button></p>';
   return h;
 }
 
 var LOW_CUTOFF = 8;
+var DROP_CUTOFF = 6;
+var DROP_MIN_VOTES = 3;
 var lowOpen = false;
 var medals = {};
 var MEDAL = { 1: 'goud', 2: 'zilver', 3: 'brons' };
@@ -635,7 +640,8 @@ function weekText(v) { return 'Week 1: ' + weekWord(v.prijzen[0]) + ' · week 2:
 // Kaartfilter: standaard enkel de "betere" villa's (groepsgemiddelde 8 of hoger, of nog geen cijfers), zoals in het raster.
 var mapBetter = true;
 function isBetter(v) { var t = stats(v.id).total; return t === null || t >= LOW_CUTOFF; }
-function mapVillas() { return DATA.villas.filter(function (v) { return !mapBetter || isBetter(v); }); }
+function isDropped(v) { var s = stats(v.id); return s.total !== null && s.given.length >= DROP_MIN_VOTES && s.total <= DROP_CUTOFF; }
+function mapVillas() { return DATA.villas.filter(function (v) { return !isDropped(v) && (!mapBetter || isBetter(v)); }); }
 function viewMap() {
   var list = mapVillas().slice().sort(function (a, b) { return a.km - b.km; });
   var hidden = DATA.villas.length - list.length;
