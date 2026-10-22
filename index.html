@@ -495,7 +495,7 @@ function viewList() {
   // Villa's met een groepsgemiddelde onder de 8 gaan naar een ingeklapt deel; villa's zonder cijfers blijven zichtbaar.
   // Groepsgemiddelde van 6 of lager: afgevallen ("te laag cijfer"); onder de 8: ingeklapt; anders bovenaan.
   var top = [], low = [], dropped = [];
-  list.forEach(function (v) { var t = stats(v.id).total; if (isDropped(v)) dropped.push(v); else if (t !== null && t < LOW_CUTOFF) low.push(v); else top.push(v); });
+  list.forEach(function (v) { if (isDropped(v)) dropped.push(v); else if (isLow(v)) low.push(v); else top.push(v); });
   // Nieuwe villa's zonder cijfers eerst, daarna de rest op groepsgemiddelde.
   top.sort(function (a, b) {
     var ta = stats(a.id).total, tb = stats(b.id).total;
@@ -508,7 +508,7 @@ function viewList() {
   var ranked = DATA.villas.map(function (v) { return { id: v.id, t: stats(v.id).total }; }).filter(function (r) { return r.t !== null; }).sort(function (a, b) { return b.t - a.t; });
   var place = 0, prev = null;
   ranked.forEach(function (r) { if (r.t !== prev) { place++; prev = r.t; } if (place <= 3) medals[r.id] = place; });
-  var h = '<p class="intro">Dag ' + esc(ME) + '! Tik op een villa, lees de korte fiche en geef een cijfer op 10. Je gaf er <b>' + done + ' van ' + DATA.villas.length + '</b>.' + (DATA.budget ? ' Budget: maximaal ' + euro(DATA.budget) + ' per week; prijzen daarboven staan in het rood.' : '') + ' Een villa met gemiddeld ' + DROP_CUTOFF + ' of lager (bij minstens ' + DROP_MIN_VOTES + ' cijfers) valt af.</p>';
+  var h = '<p class="intro">Dag ' + esc(ME) + '! Tik op een villa, lees de korte fiche en geef een cijfer op 10. Je gaf er <b>' + done + ' van ' + DATA.villas.length + '</b>.' + (DATA.budget ? ' Budget: maximaal ' + euro(DATA.budget) + ' per week; prijzen daarboven staan in het rood.' : '') + ' Een nieuwe villa blijft minstens ' + GRACE_DAYS + ' dagen bovenaan; daarna zakt ze bij een gemiddelde onder de ' + LOW_CUTOFF + ', en bij ' + DROP_CUTOFF + ' of lager (met minstens ' + DROP_MIN_VOTES + ' cijfers) valt ze af.</p>';
   h += '<div class="grid">' + top.map(tile).join('') + '</div>';
   if (low.length) {
     h += '<details class="lowbox"' + (lowOpen ? ' open' : '') + '><summary class="btn ghost">' + (lowOpen ? 'Verberg' : 'Toon') + ' de ' + low.length + ' villa\'s met een lager cijfer (onder de ' + LOW_CUTOFF + ')</summary>'
@@ -525,6 +525,7 @@ function viewList() {
 var LOW_CUTOFF = 8;
 var DROP_CUTOFF = 6;
 var DROP_MIN_VOTES = 3;
+var GRACE_DAYS = 3;
 var lowOpen = false;
 var medals = {};
 var MEDAL = { 1: 'goud', 2: 'zilver', 3: 'brons' };
@@ -533,7 +534,9 @@ function tile(v) {
   return '<a class="tile' + (m ? ' ' + MEDAL[m] : '') + '" href="#/villa/' + esc(v.id) + '">' + photo(v, statusChip(v) + (s ? '<span class="mine">' + s + ' / 10</span>' : '') + (m ? '<span class="medal ' + MEDAL[m] + '" title="' + m + 'e plaats">' + m + '</span>' : ''))
     + '<div class="tile-body"><h2>' + esc(v.naam) + '</h2><div class="loc">' + esc(v.vlag) + ' ' + esc(v.regio) + (st.total !== null ? ' · groep ' + num(st.total) : '') + '</div>'
     + '<div class="wks">' + weekBox('wk', 'Week 1 · ' + DATA.juli[0], v.prijzen[0]) + weekBox('wk', 'Week 2 · ' + DATA.juli[1], v.prijzen[1]) + '</div>'
-    + (s ? '' : '<div class="todo" style="margin-top:6px">' + (st.total === null ? 'Nieuw: nog niemand gaf een cijfer' : 'Nog geen cijfer') + '</div>')
+    + (st.total === null ? '<div class="todo" style="margin-top:6px">Nieuw: nog niemand gaf een cijfer</div>'
+      : inGrace(v) && st.total < LOW_CUTOFF ? '<div class="todo" style="margin-top:6px">Nieuw: nog ' + Math.max(1, Math.ceil(GRACE_DAYS - daysSinceAdded(v))) + ' dag(en) bovenaan, ' + st.given.length + ' cijfer' + (st.given.length === 1 ? '' : 's') + '</div>'
+      : s ? '' : '<div class="todo" style="margin-top:6px">Nog geen cijfer</div>')
     + '<div class="price' + (overBudget(v) ? ' over' : '') + '">' + (v.perGezin != null ? euro(v.perGezin) + ' <small>/ gezin' + (v.nachten ? ' · ' + v.nachten + ' nachten' : '') + (overBudget(v) ? ' · boven budget' : '') + '</small>' : '<small>geen prijs voor juli</small>') + '</div></div></a>';
 }
 $('#view').addEventListener('toggle', function (ev) { if (ev.target.classList && ev.target.classList.contains('lowbox')) { lowOpen = ev.target.open; var s = ev.target.querySelector('summary'); if (s) s.textContent = s.textContent.replace(lowOpen ? /^Toon/ : /^Verberg/, lowOpen ? 'Verberg' : 'Toon'); } }, true);
@@ -639,8 +642,13 @@ function weekText(v) { return 'Week 1: ' + weekWord(v.prijzen[0]) + ' · week 2:
 
 // Kaartfilter: standaard enkel de "betere" villa's (groepsgemiddelde 8 of hoger, of nog geen cijfers), zoals in het raster.
 var mapBetter = true;
-function isBetter(v) { var t = stats(v.id).total; return t === null || t >= LOW_CUTOFF; }
+function isBetter(v) { return !isLow(v); }
 function isDropped(v) { var s = stats(v.id); return s.total !== null && s.given.length >= DROP_MIN_VOTES && s.total <= DROP_CUTOFF; }
+// Dagen sinds de villa werd toegevoegd; zonder datum telt ze als oud.
+function daysSinceAdded(v) { if (!v.toegevoegd) return 999; return (Date.now() - new Date(v.toegevoegd + 'T00:00:00').getTime()) / 86400000; }
+// Een nieuwe villa blijft minstens GRACE_DAYS dagen bovenaan zolang er minder dan DROP_MIN_VOTES cijfers zijn.
+function inGrace(v) { return stats(v.id).given.length < DROP_MIN_VOTES && daysSinceAdded(v) < GRACE_DAYS; }
+function isLow(v) { var t = stats(v.id).total; return t !== null && t < LOW_CUTOFF && !inGrace(v); }
 function mapVillas() { return DATA.villas.filter(function (v) { return !isDropped(v) && (!mapBetter || isBetter(v)); }); }
 function viewMap() {
   var list = mapVillas().slice().sort(function (a, b) { return a.km - b.km; });
